@@ -1,3 +1,19 @@
+# Data
 *.wav
 *.pkl
 *.png
+
+# Compiled Python files
+*.pyc
+__pycache__/
+
+# Virtual environment
+venv/
+env/
+
+# macOS
+.DS_Store
+.vscode
+
+# Jupyter Notebook
+.ipynb_checkpoints/
