@@ -10,7 +10,7 @@ import zarr
 from tqdm import tqdm
 
 # get all transmissions up to present
-Tx_times = kaooi.get_Tx_keytimes(2023)[40:]
+Tx_times = kaooi.get_Tx_keytimes(2023)
 length = '2H'
 
 for Tx_time in tqdm(Tx_times):
