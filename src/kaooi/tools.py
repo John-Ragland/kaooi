@@ -3,17 +3,9 @@ Usefull Tools for Kauai beacon analysis with OOI Hydrophones
 '''
 import pandas as pd
 from typing import Optional
-import xarray as xr
-from tqdm import tqdm
-import ooipy
 import numpy as np
-import obspy
-
-# hydrophone node names
-#LJ01A has been removed because of fragmented data (could be added back if OOI changes raw data server)
-bb_nodes = ['LJ01D', 'PC01A', 'PC03A', 'LJ01C', 'LJ03A']
-lf_nodes = ['AXBA1', 'AXCC1', 'AXEC2', 'HYS14', 'HYSB1']
-
+from scipy import signal
+import xarray as xr
 
 def get_Tx_keytimes(year: int, future: Optional[bool] = False) -> list:
     '''
@@ -76,223 +68,178 @@ def __keytimes_2023( future : bool) -> list:
 
     return section1 + section2
 
-def download_data_bb(
-        key_time : pd.Timestamp,
-        length: Optional[str] = '2H',
-        verbose: Optional[bool] = True) -> dict:
+def construct_mseq() -> np.ndarray:
     '''
-    download_data - given start time return xr.Dataset of hydrophone for every BB hydrophone
-    two hours of data will be downloaded
+    construct_mseq - construct the m-sequence encoding
+
+    Returns
+    -------
+    seq : np.ndarray
+        m-sequence encoding for octal law 3471
+    '''
+
+    # 10 bit shift register
+    # initial state of 0000000001
+    #  3 / 4 / 7 / 1 
+    # 011 100 111 001
+    # [0,3,4,5,8,9,10] (indices of taps)
+    seq,_ = signal.max_len_seq(10, state=[0,0,0,0,0,0,0,0,0,1], taps=[0,3,4,5,8,9,10])
+    return seq
+
+def construct_replica_aliased(
+    sampling_rate: float,
+    carrier_freq: float = 75,
+    q: int = 2,
+    verbose: bool = False,
+) -> xr.DataArray:
+    '''
+    construct_replica - construct replica of signal broadbcast by Kauai source
+        for given sampling frequency. there is no consideration to aliasing. To
+        generate a signal that is not aliased, use construct_replica
+
+    Parameters
+    ----------
+    sampling_rate : float
+        sampling rate of replica, in Hz
+    carrier_freq : float
+        carrier frequency of replica, in Hz
+    q : int
+        quality factor (number of cycles per bit)
+    verbose : bool
+        if True, print info
+
+    Returns
+    -------
+    replica : xr.DataArray
+        replica of signal
+    '''
+
+    m = construct_mseq()
+
+    # width of single bit in seconds
+    bit_width = q/carrier_freq
+    if verbose: print('bit_width', bit_width)
+    
+    # length of sequence in seconds
+    seq_len = len(m)*bit_width
+    if verbose: print('seq_len', seq_len)
+    
+    # number of samples in sequence
+    seq_len_samples = seq_len*sampling_rate
+    if seq_len_samples % 1 != 0:
+        raise Exception(f'sequency length of {seq_len}s cannot be represented by integer number of samples for sampling rate of {sampling_rate} Hz. This is required for circular stacking')
+    else:
+        seq_len_samples = int(seq_len_samples)
+    if verbose: print('seq_len_samples', seq_len_samples)
+    
+    # number of samples per bit (not necissarily an integer)
+    samples_per_bit = (bit_width)/(1/sampling_rate)
+    if verbose: print('samples_per_bit', samples_per_bit)
+
+    ## construct binary sequence
+    bin_seq = np.ones(seq_len_samples)
+    a = 0
+
+    for k in range(len(m)):
+        b = int(np.floor((k+1)*samples_per_bit))
+        bin_seq[a:b+1] = bin_seq[a:b+1]*m[k]
+        a=b
+
+    # change from 1s and 0s to -1 and 1
+    bin_seq = -2*bin_seq + 1
+
+    t = np.arange(0, seq_len, 1/sampling_rate)[:len(bin_seq)]
+
+    carrier = np.sin(2*np.pi*carrier_freq*t)
+    replica = xr.DataArray(carrier*bin_seq, dims=['time'], coords={'time':t}, name='signal replica')
+
+    return replica
+
+def construct_replica(
+    sampling_rate: float,
+    carrier_freq: float = 75,
+    q: int = 2,
+    verbose: bool = False,
+) -> xr.DataArray:
+    '''
+    construct_replica - construct replica of signal broadbcast by Kauai source
+        for given sampling frequency.
+    to handle low sampling rates relative to signal bandwidth, the following is done
+    - for sampling rates greater than 1000 Hz, the replica is constructed as normal
+        - sides lobes above 1000Hz are well below -100dB from signal max
+    - for sampling rates lower than 1000 Hz, replica is constructed at 1000 Hz and then
+        resampled to desired sampling rate. scipy.signal.decimate is used and the anti-aliasing
+        filter is set to be zero_phase.
     
     Parameters
     ----------
-    key_time : pd.Timestamp
-        start time of transimission
-    length : str
-        length of data to download, should be readable by pd.Timedelta
+    sampling_rate : float
+        sampling rate of replica, in Hz
+    carrier_freq : float
+        carrier frequency of replica, in Hz
+    q : int
+        quality factor (number of cycles per bit)
     verbose : bool
-        if True, show progress bar
+        if True, print info
     
     Returns
     -------
-    ds : xr.Dataset
-        dataset of hydrophone data
+    replica : xr.DataArray
+        replica of signal
     '''
-    start_time = key_time.to_pydatetime()
-    end_time = start_time + pd.Timedelta(length)
-
-
-    hdata = {}
-
-    for node in tqdm(bb_nodes, disable=~verbose):
-        if verbose:
-            print(f'{node}:')
-        hdata[node] = ooipy.get_acoustic_data(start_time, end_time, node, verbose=verbose)
-
-    return hdata
-
-def download_data_lf(
-        key_time : pd.Timestamp,
-        length: Optional[str] = '2H',
-        verbose: Optional[bool] = True) -> dict:
-    '''
-    download_data - given start time return xr.Dataset of hydrophone for every LF hydrophone
-    two hours of data will be downloaded
-    
-    Parameters
-    ----------
-    key_time : pd.Timestamp
-        start time of transimission
-    length : str
-        length of data to download, should be readable by pd.Timedelta
-    verbose : bool
-        if True, show progress bar
-    
-    Returns
-    -------
-    ds : xr.Dataset
-        dataset of hydrophone data
-    '''
-    start_time = key_time.to_pydatetime()
-    end_time = start_time + pd.Timedelta(length)
-
-
-    hdata = {}
-
-    for node in tqdm(lf_nodes, disable=~verbose):
-        if verbose:
-            print(f'{node}:')
-        hdata[node] = ooipy.get_acoustic_data_LF(
-            start_time,
-            end_time,
-            node,
-            verbose=verbose
-        )
-
-    return hdata
-
-def get_ooi_data(
-        key_time : pd.Timestamp,
-        length: Optional[str] = '2H',
-        verbose: Optional[bool] = True,
-        chunk_sizes: Optional[dict] = {'time':125e3, 'transmission':1}) -> xr.Dataset:
-    '''
-    get_ooi_data - given start time return xr.Dataset of hydrophone for every hydrophone
-    two hours of data will be downloaded
-    
-    Parameters
-    ----------
-    key_time : pd.Timestamp
-        start time of transimission
-    length : str
-        length of data to download, should be readable by pd.Timedelta
-    verbose : bool
-        if True, show progress bar
-    
-    Returns
-    -------
-    ds : xr.Dataset
-        dataset of hydrophone data
-    '''
-    start_time = key_time.to_pydatetime()
-    end_time = start_time + pd.Timedelta(length)
-
-    # download broadband data
-    hdata_bf = download_data_bb(key_time, length, verbose)
-    # decimate broadband data to fs = 1000
-    hdata_bf = decimate_data(hdata_bf)
-
-    # download low frequency data
-    hdata_lf = download_data_lf(key_time, length, verbose)
-    # upsample low frequency data to fs = 1000
-    hdata_lf = resample_data(
-        hdata_lf,
-        fs=1000
-    )
-
-    # slice low frequency data to exactly match broadband data
-    for node in hdata_lf:
-        try:
-            hdata_lf[node] = hdata_lf[node].slice(
-                starttime=obspy.core.UTCDateTime(start_time),
-                endtime=obspy.core.UTCDateTime(end_time)
-            )
-        except AttributeError:
-            pass
-
-    hdata = hdata_bf | hdata_lf
-
-    # check if there is partial data and remove it
-    for node in hdata:
-        if hdata[node] == None:
-            pass
-        else:
-            if hdata[node].stats['endtime'] != end_time:
-                hdata[node] = None
+    if sampling_rate < 1000:
+        replica_1000_np= construct_replica_aliased(1000, carrier_freq, q, verbose).values
+        replica_np = __decimate_nonint(replica_1000_np, 1000, sampling_rate)
         
-    hdata_x = construct_xds(key_time, hdata, length, chunk_sizes=chunk_sizes)
-    return hdata_x
+        # get time coordinate
+        m = construct_mseq()
 
-def decimate_data(hdata: dict):
-    '''
-    decimate_data decimate broadband data from fs=64khz to fs=1000Hz
-    done in two ds factors of 8 to avoid unstable filters
+        # width of single bit in seconds
+        bit_width = q/carrier_freq
+        if verbose: print('bit_width', bit_width)
+    
+        # length of sequence in seconds
+        seq_len = len(m)*bit_width
 
-    TODO there seems to be a problem with the beginning of data samples
-    '''
-    for node in hdata:
-        if hdata[node] == None:
-            pass
-        else:
-            hdata[node].decimate(8)
-            hdata[node].decimate(8)
-    return hdata
+        t = np.arange(0, seq_len, 1/sampling_rate)[:len(replica_np)]
 
-def resample_data(hdata: dict, fs: int = 1000) -> dict:
-    '''
-    resample_data resample broadband data to a new sampling frequency
-    '''
-    for node in hdata:
-        if hdata[node] == None:
-            pass
-        else:
-            hdata[node].resample(fs)
-    return hdata
+        replica = xr.DataArray(replica_np, dims=['time'], coords={'time':t}, name='signal replica')
+    else:
+        replica = construct_replica_aliased(sampling_rate, carrier_freq, q, verbose)
+    
+    return replica
 
-def construct_xds(
-        key_time: pd.Timestamp,
-        hdata: dict,
-        length: str,
-        chunk_sizes: Optional[dict] = {'time': 125e3, 'transmission': 1},
-    ) -> xr.Dataset:
+
+def __decimate_nonint(input_array, old_sampling_rate, new_sampling_rate):
     '''
-    construct_xds - construct xarray dataset of hydrophone data for single transmission
+    decimate signal by noninteger factor
 
     Parameters
     ----------
-    key_time : pd.Timestamp
-        start time of transimission
-    hdata : dict
-        dictionary of hydrophone data
-    length : str
-        length of data to download, should be readable by pd.Timedelta
-    chunk_sizes : dict
-        dictionary of chunk sizes for each dimension of the dataset
+    input_array : np.ndarray
+        input signal
+    old_sampling_rate : float
+        sampling rate of input signal
+    new_sampling_rate : float
+        desired sampling rate of output signal
 
     Returns
     -------
-    ds : xr.Dataset
-        dataset of hydrophone data
+    output_array : np.ndarray
+        decimated signal
     '''
-
-    hdata_x = {}
-    for node in hdata:
-        if hdata[node] == None:
-            nsamples = int(pd.Timedelta(length).value/1e9*1000 + 1)
-            single_channel = np.expand_dims(np.ones(nsamples)*np.nan, 1)
-
-            hdata_x[node] = xr.DataArray(
-                single_channel,
-                dims=['time', 'transmission'],
-                coords={'transmission':[key_time]},
-                name=node)
-        else:
-            single_channel = np.expand_dims(hdata[node].data, 1)
-
-            hdata_x[node] = xr.DataArray(
-                single_channel,
-                dims=['time', 'transmission'],
-                coords={'transmission':[key_time]},
-                name=node,
-                attrs=hdata[node].stats)
-            
-            # change attributes to strings
-            hdata_x[node].attrs['starttime'] = hdata_x[node].attrs['starttime'].strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-            hdata_x[node].attrs['endtime'] = hdata_x[node].attrs['endtime'].strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-            hdata_x[node].attrs['mseed'] = str(hdata_x[node].attrs['mseed'])
-            hdata_x[node].attrs['processing'] = str(hdata_x[node].attrs['processing'])
-    try:
-        return xr.Dataset(hdata_x).chunk(chunk_sizes).drop_indexes(coord_names=['transmission'])
-    except ValueError:
-        print(f'uneven data coverage for {key_time}')
-        return None
+    if old_sampling_rate % new_sampling_rate == 0:
+        # If the sampling rates have an integer ratio, use regular decimate
+        decimation_factor = old_sampling_rate // new_sampling_rate
+        return signal.decimate(input_array, decimation_factor, zero_phase=True)
+    else:
+        # Find the least common multiple of the old and new sampling rates
+        lcm = np.lcm(old_sampling_rate, new_sampling_rate)
+        
+        # Upsample to the least common multiple sampling rate
+        upsampled_array = signal.resample(input_array, int(lcm / old_sampling_rate * len(input_array)))
+        
+        # Decimate to the new sampling rate
+        decimation_factor = int(lcm / new_sampling_rate)
+        output_array = signal.decimate(upsampled_array, decimation_factor, zero_phase=True)
+        return output_array
