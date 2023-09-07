@@ -1,3 +1,4 @@
+<!-- SPHINX-START -->
 ![kaooi logo](images/kaooi_logo.svg)
 code for signal processing and analysis of the kauai beacon recieved by Ocean Observatories Innitiative (OOI) hydrophones
 

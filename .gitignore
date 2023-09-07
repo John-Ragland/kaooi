@@ -2,6 +2,8 @@
 *.wav
 *.pkl
 *.png
+*.mat
+*.nc
 
 # Compiled Python files
 *.pyc
@@ -18,3 +20,6 @@ env/
 # Jupyter Notebook
 .ipynb_checkpoints/
 dev_notebooks/.ipynb_checkpoints/
+
+# Docs
+docs/_build/
