@@ -5,6 +5,9 @@
 *.mat
 *.nc
 
+# figures
+dev_notebooks/figures/
+
 # Compiled Python files
 *.pyc
 __pycache__/

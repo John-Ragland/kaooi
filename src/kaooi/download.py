@@ -80,6 +80,63 @@ def downloadTx_200hz(
     if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} completed.')
     return
 
+def downloadTx_64kHz(
+        Tx_time: pd.Timestamp,
+        ds_dir: str = '/datadrive/kauai/transmissions/64kHz_sensors/',
+        length: str = '2H',
+        verbose=False,) -> None:
+    '''
+    download and save data from single transmission for all sensors. And save the data to disk.
+
+    Parameters
+    ----------
+    Tx_time : pd.Timestamp
+        start time of transimission
+    ds_dir : str    
+        directory to save data to. data org inside of directory should have real and imag folders
+    length : str
+        length of data to download, should be readable by pd.Timedelta
+    verbose : bool
+        if True, print progress
+    ''' 
+
+    # check if data already exists
+    fnr = f'{ds_dir}/real/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
+    fni = f'{ds_dir}/imag/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
+
+    if os.path.exists(fnr) & os.path.exists(fni):
+        if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
+        return
+
+    #download data from ooi server
+    data = kaooi.download_data_bb(Tx_time, length=length, verbose=verbose)
+    # decimate data to fs = 500 Hz
+    data_dec = kaooi.decimate_data(data)
+    # convert to x array.dataset
+    data_x = kaooi.construct_xds(Tx_time, data_dec, length=length, sampling_rate=500, chunk_sizes={'time':3600001})
+    # skip if there is uneven data coverage
+    if data_x is None:
+        if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
+        return
+    
+    if verbose:
+        print('processing data...')
+    # remove mean from data
+    data_x_nm = data_x - data_x.mean()
+
+    # match filter the data
+    data_x_match = kaooi.match_filter(data_x_nm, dim='time', sampling_rate=500, length=length)
+
+    if verbose:
+        print('saving data...')
+    # save to disk
+    # duct taping that netcdf doesn't allow complex numbers    
+    data_x_match.real.to_netcdf(fnr)
+    data_x_match.imag.to_netcdf(fni)
+
+    if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} completed.')
+    return
+
 def download_data_bb(
         key_time : pd.Timestamp,
         length: Optional[str] = '2H',
@@ -111,7 +168,13 @@ def download_data_bb(
     for node in tqdm(bb_nodes, disable=~verbose):
         if verbose:
             print(f'{node}:')
-        hdata[node] = ooipy.get_acoustic_data(start_time, end_time, node, verbose=verbose)
+        hdata[node] = ooipy.get_acoustic_data(
+            start_time,
+            end_time,
+            node,
+            verbose=verbose, 
+            mseed_file_limit=100,
+            gapless_merge=True)
 
     return hdata
 
@@ -222,7 +285,7 @@ def get_ooi_data(
 
 def decimate_data(hdata: dict):
     '''
-    decimate_data decimate broadband data from fs=64khz to fs=1000Hz
+    decimate_data decimate broadband data from fs=64khz to fs=500Hz
     done in two ds factors of 8 to avoid unstable filters
 
     TODO there seems to be a problem with the beginning of data samples
@@ -233,6 +296,7 @@ def decimate_data(hdata: dict):
         else:
             hdata[node].decimate(8)
             hdata[node].decimate(8)
+            hdata[node].decimate(2)
     return hdata
 
 def resample_data(hdata: dict, fs: int = 1000) -> dict:

@@ -210,7 +210,10 @@ def construct_replica(
     return replica
 
 
-def __decimate_nonint(input_array, old_sampling_rate, new_sampling_rate):
+def __decimate_nonint(
+        input_array: np.array,
+        old_sampling_rate: float,
+        new_sampling_rate: float) -> np.array:
     '''
     decimate signal by noninteger factor
 
