@@ -35,13 +35,11 @@ def match_filter(
         will have complex values
     '''
     replica = kaooi.construct_replica(sampling_rate = sampling_rate)
-    replica_c = xrs.hilbert(replica, dim=dim)
 
     # keep only integer number of replicas in ds
     ds = ds.isel({dim:slice(0, int(ds[dim].size/replica[dim].size)*replica[dim].size)})
-    ds_c = xrs.hilbert(ds, dim=dim)
 
-    ds_match = xrs.correlate(ds_c, replica_c, mode='same')
+    ds_match = xrs.correlate(ds, replica, mode='same')
     
     # construct new time coordinates
     len_rep = len(replica)/sampling_rate

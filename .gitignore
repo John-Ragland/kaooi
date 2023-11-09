@@ -4,6 +4,7 @@
 *.png
 *.mat
 *.nc
+*.mseed
 
 # figures
 dev_notebooks/figures/

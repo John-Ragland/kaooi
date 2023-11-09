@@ -32,7 +32,7 @@ for node in lf_nodes:
 
 def downloadTx_200hz(
         Tx_time: pd.Timestamp,
-        ds_dir: str = '/datadrive/kauai/transmissions/200Hz_sensors/',
+        ds_dir: str = '/datadrive/kauai/transmissions/200Hz_sensors_clipped/',
         length: str = '2H',
         verbose=False,) -> None:
     '''
@@ -51,10 +51,9 @@ def downloadTx_200hz(
     '''
 
     # check if data already exists
-    fnr = f'{ds_dir}/real/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
-    fni = f'{ds_dir}/imag/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
+    fn = f'{ds_dir}/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
 
-    if os.path.exists(fnr) & os.path.exists(fni):
+    if os.path.exists(fn):
         if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
         return
 
@@ -69,13 +68,16 @@ def downloadTx_200hz(
         if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
         return
     
+    # clip data
+    std = data_x.std(dim='time')
+    data_clip = data_x.clip(min=-2*std, max=2*std)
+
     # match filter the data
-    data_x_match = kaooi.match_filter(data_x, dim='time', sampling_rate=200, length=length)
+    data_x_match = kaooi.match_filter(data_clip, dim='time', sampling_rate=200, length=length)
 
     # save to disk
     # duct taping that netcdf doesn't allow complex numbers    
-    data_x_match.real.to_netcdf(fnr)
-    data_x_match.imag.to_netcdf(fni)
+    data_x_match.to_netcdf(fn)
 
     if verbose: print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} completed.')
     return
