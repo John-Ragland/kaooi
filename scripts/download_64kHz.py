@@ -12,25 +12,15 @@ import functools
 import pandas as pd
 
 if __name__ == '__main__':
-    # Get the number of CPUs available
-    num_cpus = mp.cpu_count()
-    # Create a pool of processes, one for each CPU
 
-    Tx_times = kaooi.get_Tx_keytimes(year=2023)[:119]
-
-    # create partial function
-    download_Tx_partial = functools.partial(
-        kaooi.downloadTx_64kHz,
-        ds_dir='/datadrive/kauai/transmissions/ooi_bb/',
-        length='2H',
-        verbose=True,
-        preprocess=False,
-    )
-
+    Tx_times = kaooi.get_Tx_keytimes(year=2023)
+    
     for Tx_time in tqdm(Tx_times):
-
-        # Throw out any data for when ooi broke the hydrophones ._.
-        if Tx_time > pd.Timestamp('2023-06-07'):
-            continue
-
-        download_Tx_partial(Tx_time)
+        kaooi.downloadTx_64kHz(
+            Tx_time,
+            ds_dir='/datadrive/kauai/transmissions/ooi_bb/LJ01C',
+            length='2H',
+            verbose=True,
+            preprocess=False,
+            nodes=['LJ01C']
+        )
