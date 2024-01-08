@@ -16,7 +16,7 @@ from .signal_processing import *
 
 # hydrophone node names
 # LJ01A has been removed because of fragmented data (could be added back if OOI changes raw data server)
-bb_nodes = ['LJ01D', 'PC01A', 'PC03A', 'LJ01C', 'LJ03A']
+bb_nodes = ['LJ01D', 'LJ01A', 'PC01A', 'PC03A', 'LJ01C', 'LJ03A']
 lf_nodes = ['AXBA1', 'AXCC1', 'AXEC2', 'HYS14', 'HYSB1']
 obs_nodes = [
     'AXAS1',
@@ -48,7 +48,7 @@ def downloadTx_200hz(
     ds_dir: str = '/datadrive/kauai/transmissions/200Hz_sensors_clipped/',
     length: str = '2H',
     verbose=False,
-    preprocess=False
+    preprocess=False,
 ) -> None:
     '''
     download and save data from single transmission for all sensors. And save the data to disk.
@@ -112,8 +112,9 @@ def downloadTx_64kHz(
     Tx_time: pd.Timestamp,
     ds_dir: str = '/datadrive/kauai/transmissions/64kHz_sensors/',
     length: str = '2H',
-    verbose: bool =False,
-    preprocess: bool=False,
+    verbose: bool = False,
+    preprocess: bool = False,
+    nodes: Optional[list] = None,
 ) -> None:
     '''
     download and save data from single transmission for all sensors. And save the data to disk.
@@ -128,6 +129,10 @@ def downloadTx_64kHz(
         length of data to download, should be readable by pd.Timedelta
     verbose : bool
         if True, print progress
+    preprocess : bool
+        if true, then data is match filtered and clipped. Default is False
+    nodes : list
+        list of nodes to download data from. Default (None) is all nodes
     '''
 
     # check if data already exists
@@ -139,9 +144,13 @@ def downloadTx_64kHz(
         return
 
     # download data from ooi server
-    data = kaooi.download_data_bb(Tx_time, length=length, verbose=verbose)
+    data = kaooi.download_data_bb(Tx_time, length=length, verbose=verbose, nodes=nodes)
+
+    # zero mean / fill gaps if present
+    data_nogaps = zm_rem_gaps(data)
+
     # decimate data to fs = 500 Hz
-    data_dec = kaooi.decimate_data(data)
+    data_dec = kaooi.decimate_data(data_nogaps)
     # convert to x array.dataset
     data_x = kaooi.construct_xds(Tx_time, data_dec, length=length, sampling_rate=500, chunk_sizes={'time': 3600001})
     # skip if there is uneven data coverage
@@ -149,7 +158,7 @@ def downloadTx_64kHz(
         if verbose:
             print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
         return
-    
+
     if preprocess:
         if verbose:
             print('processing data...')
@@ -172,7 +181,9 @@ def downloadTx_64kHz(
     return
 
 
-def download_data_bb(key_time: pd.Timestamp, length: Optional[str] = '2H', verbose: Optional[bool] = True) -> dict:
+def download_data_bb(
+    key_time: pd.Timestamp, length: Optional[str] = '2H', verbose: Optional[bool] = True, nodes: Optional[list] = None
+) -> dict:
     '''
     download_data - given start time return xr.Dataset of hydrophone for every BB hydrophone
     two hours of data will be downloaded
@@ -185,6 +196,8 @@ def download_data_bb(key_time: pd.Timestamp, length: Optional[str] = '2H', verbo
         length of data to download, should be readable by pd.Timedelta
     verbose : bool
         if True, show progress bar
+    nodes : list
+        list of nodes to download data from. Default (None) is all nodes
 
     Returns
     -------
@@ -195,12 +208,16 @@ def download_data_bb(key_time: pd.Timestamp, length: Optional[str] = '2H', verbo
     end_time = start_time + pd.Timedelta(length)
 
     hdata = {}
-
-    for node in tqdm(bb_nodes, disable=~verbose):
+    if nodes is None:
+        nodes = bb_nodes
+    for node in tqdm(nodes, disable=~verbose):
         if verbose:
             print(f'{node}:')
         hdata[node] = ooipy.get_acoustic_data(
-            start_time, end_time, node, verbose=verbose, mseed_file_limit=100
+            start_time,
+            end_time,
+            node,
+            verbose=verbose,
         )
 
     return hdata
@@ -304,13 +321,17 @@ def get_ooi_data(
 def decimate_data(hdata: dict):
     '''
     decimate_data decimate broadband data from fs=64khz to fs=500Hz
-    done in two ds factors of 8 to avoid unstable filters
+    done in two ds factors of 8 to avoid unstable filters.
+
+    data must not have gaps
 
     TODO there seems to be a problem with the beginning of data samples
     '''
     for node in hdata:
         if hdata[node] == None:
-            pass
+            continue
+        if isinstance(hdata[node].data, np.ma.masked_array):
+            raise Exception('Cannot decimate data with gaps')
         else:
             hdata[node].decimate(8)
             hdata[node].decimate(8)
@@ -404,3 +425,30 @@ def construct_xds(
         print(e)
         print(f'uneven data coverage for {key_time}')
         return None
+
+
+def zm_rem_gaps(hdata: dict):
+    '''
+    zero mean remove gaps from data, filled values for gaps are zeros
+    if data is not masked, then data is just zero meaned
+
+    Parameters
+    ----------
+    hdata : dict
+        dictionary of hydrophone data, with keys the node strings and values
+        ooipy.hydropphone.HydrophoneData objects (or obspy.Stream).
+    '''
+
+    for node in hdata:
+        if hdata[node] == None:
+            pass
+        else:
+            # remove mean (whether or not data has gaps)
+            hdata[node].data = hdata[node].data - np.mean(hdata[node].data)
+            if isinstance(hdata[node].data, np.ma.masked_array):
+                # fill gaps with zeros if present
+                hdata[node].data = hdata[node].data.filled(fill_value=0)
+            else:
+                pass
+    print('gaps removed')
+    return hdata
