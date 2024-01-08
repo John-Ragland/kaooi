@@ -41,6 +41,7 @@ def match_filter(
 
     ds_match = xrs.correlate(ds, replica, mode='same')
     
+    return ds_match
     # construct new time coordinates
     len_rep = len(replica)/sampling_rate
     lt = np.arange(0,pd.Timedelta(length).value/1e9,len_rep)[:-1]
