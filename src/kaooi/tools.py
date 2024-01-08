@@ -40,39 +40,37 @@ def __keytimes_2023(future: bool) -> list:
         '01': [],
         '02': [],
         '03': [18, 22, 26, 30],
-        '04': [3,7,11,15,19,23,27],
-        '05': [1,5,9,13,17,21,25,29],
-        '06': [2,6,10,14,18,22,26],
+        '04': [3, 7, 11, 15, 19, 23, 27],
+        '05': [1, 5, 9, 13, 17, 21, 25, 29],
+        '06': [2, 6, 10, 14, 18, 22, 26],
         '07': [],
-        '08': [3,7,11,15,19,23,27,31],
-        '09': [4,8,12,16,20,24,28],
-        '10': [2,6,10,14,22,26,30],
-        '11': [3,7,11,15,19,23,27],
-        '12': []
+        '08': [3, 7, 11, 15, 19, 23, 27, 31],
+        '09': [4, 8, 12, 16, 20, 24, 28],
+        '10': [2, 6, 10, 14, 22, 26, 30],
+        '11': [3, 7, 11, 15, 19, 23, 27],
+        '12': [1, 5, 9, 13, 17, 21, 25, 29],
     }
-
 
     Tx_times = []
 
     for month in tx_days:
         for day in tx_days[month]:
             time = pd.Timestamp(f'2023-{month}-{day:02}')
-            
-            
+
             # full day skips
             if time == pd.Timestamp('2023-10-18 00:00:00'):
                 continue
             # don't include future transmissions
             if (not future) & (time > pd.Timestamp('today')):
                 continue
-            
+
             Tx_times.append(time)
             Tx_times.append(time + pd.Timedelta('4H'))
             Tx_times.append(time + pd.Timedelta('8H'))
             Tx_times.append(time + pd.Timedelta('12H'))
             Tx_times.append(time + pd.Timedelta('16H'))
             Tx_times.append(time + pd.Timedelta('20H'))
-            
+
     # remove failed transmissions
     Tx_times.remove(pd.Timestamp('2023-04-19 04:00:00'))
     Tx_times.remove(pd.Timestamp('2023-06-26 04:00:00'))
@@ -81,6 +79,8 @@ def __keytimes_2023(future: bool) -> list:
     Tx_times.remove(pd.Timestamp('2023-06-26 16:00:00'))
     Tx_times.remove(pd.Timestamp('2023-06-26 20:00:00'))
     Tx_times.remove(pd.Timestamp('2023-09-24 04:00:00'))
+    Tx_times.remove(pd.Timestamp('2023-11-19 16:00:00'))
+    Tx_times.remove(pd.Timestamp('2023-11-19 20:00:00'))
     return Tx_times
 
 
@@ -303,9 +303,9 @@ def add_ltst_coords(ds: xr.Dataset, dim: str, sampling_rate: float, length: str 
     ds = ds.isel({dim: slice(0, int(ds[dim].size / replica[dim].size) * replica[dim].size)})
 
     ds = ds.assign_coords({'longtime': (dim, ltlt), 'shorttime': (dim, stst)})
-    
+
     # Can't be supported with netcdf ...
-    #ds = ds.set_index(
+    # ds = ds.set_index(
     #    {'time': ('longtime', 'shorttime')}
-    #)
+    # )
     return ds
