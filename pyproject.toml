@@ -35,9 +35,12 @@ dependencies = [
 Documentation = "https://github.com/unknown/kaooi#readme"
 Issues = "https://github.com/unknown/kaooi/issues"
 Source = "https://github.com/unknown/kaooi"
+[tool.hatch.build.hooks.vcs]
+version-file = "_version.py"
 
 [tool.hatch.version]
-path = "src/kaooi/__about__.py"
+source="vcs"
+vcs="git"
 
 [tool.hatch.envs.default]
 dependencies = [
