@@ -23,6 +23,8 @@ def get_Tx_keytimes(year: int, future: Optional[bool] = False) -> list:
     '''
     if year == 2023:
         return __keytimes_2023(future)
+    elif year == 2024:
+        return __keytimes_2024(future)
 
 
 def __keytimes_2023(future: bool) -> list:
@@ -81,6 +83,58 @@ def __keytimes_2023(future: bool) -> list:
     Tx_times.remove(pd.Timestamp('2023-09-24 04:00:00'))
     Tx_times.remove(pd.Timestamp('2023-11-19 16:00:00'))
     Tx_times.remove(pd.Timestamp('2023-11-19 20:00:00'))
+    return Tx_times
+
+
+def __keytimes_2024(future: bool) -> list:
+    '''
+    returns only key times for the year 2023
+    manually coded to reflect the schedule of the Kauai source
+    Parameters
+    ----------
+    future : bool
+        If True, return the future keytimes, else return up to current day
+    '''
+
+    # Transmission details at marasondo.org
+    tx_days = {
+        '01': [2, 6, 10, 14, 18, 22, 26, 30],
+        '02': [3, 7, 11, 15, 19, 23, 27],
+        '03': [],
+        '04': [],
+        '05': [],
+        '06': [],
+        '07': [],
+        '08': [],
+        '09': [],
+        '10': [],
+        '11': [],
+        '12': [],
+    }
+
+    Tx_times = []
+
+    for month in tx_days:
+        for day in tx_days[month]:
+            time = pd.Timestamp(f'2024-{month}-{day:02}')
+
+            # full day skips
+            # if time == pd.Timestamp('2023-10-18 00:00:00'):
+            # continue
+
+            # don't include future transmissions
+            if (not future) & (time > pd.Timestamp('today')):
+                continue
+
+            Tx_times.append(time)
+            Tx_times.append(time + pd.Timedelta('4H'))
+            Tx_times.append(time + pd.Timedelta('8H'))
+            Tx_times.append(time + pd.Timedelta('12H'))
+            Tx_times.append(time + pd.Timedelta('16H'))
+            Tx_times.append(time + pd.Timedelta('20H'))
+
+    # remove failed transmissions
+
     return Tx_times
 
 
