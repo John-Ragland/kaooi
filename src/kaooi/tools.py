@@ -9,7 +9,7 @@ import xarray as xr
 import kaooi
 
 
-def get_Tx_keytimes(year: int, future: Optional[bool] = False) -> list:
+def get_Tx_keytimes(year: Optional[int] = None, future: Optional[bool] = False) -> list:
     '''
     get_Tx_keytimes - given the year, return a list of pd.Timestamps that indicate each time
     the Kauai source transmitted for a given year
@@ -17,14 +17,27 @@ def get_Tx_keytimes(year: int, future: Optional[bool] = False) -> list:
     Parameters
     ----------
     year : int
-        year to get key times for. Currently supported years: [2023]
+        year to get key times for. Currently supported years: [2023, 2024] (default: None), 
+        all times up to present are returned
     future : bool
         If True, return the future keytimes, else return up to current day
+    
+    Returns
+    -------
+    Tx_times : list
     '''
-    if year == 2023:
+
+    if year is None:
+        Tx_times = []
+        Tx_times += __keytimes_2023(future)
+        Tx_times += __keytimes_2024(future)
+        return Tx_times
+    elif year == 2023:
         return __keytimes_2023(future)
     elif year == 2024:
         return __keytimes_2024(future)
+    else:
+        raise Exception(f'Year {year} is not supported')
 
 
 def __keytimes_2023(future: bool) -> list:
@@ -67,11 +80,11 @@ def __keytimes_2023(future: bool) -> list:
                 continue
 
             Tx_times.append(time)
-            Tx_times.append(time + pd.Timedelta('4H'))
-            Tx_times.append(time + pd.Timedelta('8H'))
-            Tx_times.append(time + pd.Timedelta('12H'))
-            Tx_times.append(time + pd.Timedelta('16H'))
-            Tx_times.append(time + pd.Timedelta('20H'))
+            Tx_times.append(time + pd.Timedelta('4h'))
+            Tx_times.append(time + pd.Timedelta('8h'))
+            Tx_times.append(time + pd.Timedelta('12h'))
+            Tx_times.append(time + pd.Timedelta('16h'))
+            Tx_times.append(time + pd.Timedelta('20h'))
 
     # remove failed transmissions
     Tx_times.remove(pd.Timestamp('2023-04-19 04:00:00'))
@@ -127,16 +140,33 @@ def __keytimes_2024(future: bool) -> list:
                 continue
 
             Tx_times.append(time)
-            Tx_times.append(time + pd.Timedelta('4H'))
-            Tx_times.append(time + pd.Timedelta('8H'))
-            Tx_times.append(time + pd.Timedelta('12H'))
-            Tx_times.append(time + pd.Timedelta('16H'))
-            Tx_times.append(time + pd.Timedelta('20H'))
+            Tx_times.append(time + pd.Timedelta('4h'))
+            Tx_times.append(time + pd.Timedelta('8h'))
+            Tx_times.append(time + pd.Timedelta('12h'))
+            Tx_times.append(time + pd.Timedelta('16h'))
+            Tx_times.append(time + pd.Timedelta('20h'))
 
     # remove failed transmissions
 
     return Tx_times
 
+
+def get_Tx_keytimes_scheduled():
+    '''
+    Return Tx keytimes for all scheduled transmissions, but not necessarily successful transmissions
+        i.e. every fourth day, every 4 hours
+    '''
+
+    today = pd.Timestamp('today')
+    Tx_days = pd.date_range(start='2023-03-18', end=today, freq='4D')
+
+    Tx_times = []
+
+    for Tx_day in Tx_days:
+        for k in range(0,24,4):
+            Tx_times.append(Tx_day + pd.Timedelta(k, 'h'))
+    
+    return Tx_times
 
 def construct_mseq() -> np.ndarray:
     '''
@@ -266,8 +296,8 @@ def construct_replica(
         replica of signal
     '''
     if sampling_rate < 1000:
-        replica_1000_np = construct_replica_aliased(1000, carrier_freq, q, verbose).values
-        replica_np = __decimate_nonint(replica_1000_np, 1000, sampling_rate)
+        replica_us_np = construct_replica_aliased(carrier_freq*100, carrier_freq, q, verbose).values
+        replica_np = __decimate_nonint(replica_us_np, carrier_freq * 100, sampling_rate)
 
         # get time coordinate
         m = construct_mseq()
@@ -324,7 +354,7 @@ def __decimate_nonint(input_array: np.array, old_sampling_rate: float, new_sampl
         return output_array
 
 
-def add_ltst_coords(ds: xr.Dataset, dim: str, sampling_rate: float, length: str = '2H'):
+def add_ltst_coords(ds: xr.Dataset, dim: str, sampling_rate: float, length: str = '2h', carrier_freq: float = 75) -> xr.Dataset:
     '''
     add longtime shorttime coords. Adds longtime/shorttime coordinates
         relative to the 27.28 second signal replica length and the supplied
@@ -342,7 +372,7 @@ def add_ltst_coords(ds: xr.Dataset, dim: str, sampling_rate: float, length: str 
         length of dataset in dimension dim, should be readable by pd.Timedelta
     '''
 
-    replica = kaooi.construct_replica(sampling_rate=sampling_rate)
+    replica = kaooi.construct_replica(sampling_rate=sampling_rate, carrier_freq=carrier_freq)
 
     # construct new time coordinates
     len_rep = len(replica) / sampling_rate

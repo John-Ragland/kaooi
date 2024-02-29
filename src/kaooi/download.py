@@ -87,7 +87,7 @@ def downloadTx_200hz(
             print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
         return
 
-    data_x = kaooi.tools.add_ltst_coords(data_x, dim='time', sampling_rate=200, length=length)
+    # data_x = kaooi.tools.add_ltst_coords(data_x, dim='time', sampling_rate=200, length=length)
 
     if preprocess:
         # clip data
@@ -357,6 +357,7 @@ def construct_xds(
     length: str,
     sampling_rate: float,
     chunk_sizes: Optional[dict] = None,
+    dtype : Optional[str] = 'float32'
 ) -> xr.Dataset:
     '''
     construct_xds - construct xarray dataset of hydrophone data for single transmission
@@ -373,7 +374,8 @@ def construct_xds(
         if included, then time coordinate is constructed and added to dataset
     chunk_sizes : dict
         dictionary of chunk sizes for each dimension of the dataset
-
+    dtype : str
+        data type to use if hdata is none
 
     Returns
     -------
@@ -387,7 +389,7 @@ def construct_xds(
     for node in hdata:
         if hdata[node] == None:
             nsamples = int(pd.Timedelta(length).value / 1e9 * sampling_rate + 1)
-            single_channel = np.expand_dims(np.ones(nsamples) * np.nan, 1)
+            single_channel = np.expand_dims(np.ones(nsamples) * np.nan, 1).astype(dtype)
 
             hdata_x[node] = xr.DataArray(
                 single_channel, dims=['time', 'transmission'], coords={'transmission': [key_time]}, name=node
@@ -411,9 +413,11 @@ def construct_xds(
                 hdata_x[node].attrs['processing'] = str(hdata_x[node].attrs['processing'])
             except KeyError:
                 pass
+
+    
     try:
         ds = xr.Dataset(hdata_x, coords={'time': time_coord})
-
+        ds.transmission.encoding = {'units': 'nanoseconds since 1970-01-01'}
         # chunk the dataset
         if chunk_sizes is None:
             chunk_sizes = {'transmission': 1, 'time': ds.sizes['time']}

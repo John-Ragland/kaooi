@@ -28,7 +28,9 @@ dependencies = [
     "numpy",
     "scipy",
     "ooipy",
-    "tqdm"
+    "tqdm",
+    "ujson",
+    "kerchunk"
 ]
 
 [project.urls]
