@@ -13,7 +13,7 @@ import pandas as pd
 
 if __name__ == '__main__':
 
-    nodes = ['LJ01C', 'PC01A', 'PC03A']#, 'LJ01A', 'LJ01D']
+    nodes = ['LJ01C', 'PC01A', 'PC03A', 'LJ01A', 'LJ01D']
     for node in nodes:
         print(f'downloading data for {node}...')
         for year in [2023, 2024]:

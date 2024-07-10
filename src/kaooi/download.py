@@ -357,7 +357,7 @@ def construct_xds(
     length: str,
     sampling_rate: float,
     chunk_sizes: Optional[dict] = None,
-    dtype : Optional[str] = 'float32'
+    dtype : Optional[str] = 'float64'
 ) -> xr.Dataset:
     '''
     construct_xds - construct xarray dataset of hydrophone data for single transmission

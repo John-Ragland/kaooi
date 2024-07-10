@@ -6,8 +6,9 @@ import xarray as xr
 import numpy as np
 from scipy import signal
 from tqdm import tqdm
+import pandas as pd
 
-def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold =10):
+def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold =10, flatten=False, timestamp='date'):
     '''
     estimate_peaks - given processed data, estimate location and snr of peaks
 
@@ -19,6 +20,16 @@ def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold =10):
         slice in short time that contains just noise (default is (0, None), i.e. entire slice)
     snr_threshold : float
         threshold for SNR in dB. Default is 10
+    flatten : bool
+        if true, peak_locs and peak_heights are flatttened, and transmission is repeated for each peak
+    timestamp : str
+        ['date','txnum','rxnum'] date returns pd.Timestamp, txnum returns transmission number, rxnum returns reception number
+
+    Returns
+    -------
+    arrival_times : dict
+        dictionary with keys ['peak_locs', 'peak_heights', 'transmission']
+        containing a list of arrival times for each transmission
     '''
 
     noise_rms = np.sqrt(((da.sel({'shorttime': slice(0,None)}))**2).mean('shorttime'))
@@ -41,8 +52,79 @@ def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold =10):
         'peak_heights': peak_heights,
         'transmission': da.transmission.values.tolist(),
     }
+
+    if flatten:
+        arrival_times = flatten_peaks(arrival_times, timestamp)
+    
     return arrival_times
 
+def flatten_peaks(peaks : dict, timestamp='date'):
+    '''
+    flatten_peaks - given output of ::kaooi.estimate_peaks_array::, compute vectors
+        of transmission date, arrival time, and snr (in db) that can be used to created
+        a scatter plot
+
+    Parameters
+    ----------
+    peaks : dictionary
+        estimated peaks from data - output of ::kaooi.estimate_peaks_array::
+        should have keys, ['peak_locs', 'peak_heights', 'transmission']
+    timestamp : str
+        ['date','txnum','rxnum'] date returns pd.Timestamp, txnum returns transmission number, rxnum returns reception number
+
+
+    Returns
+    -------
+    peak_times : np.array
+        vector of shape (n,) containing arrival times
+    transmission_times : np.array
+        vector of shape (n,) containing transmission times
+    snrs : np.array
+        vector of shape (n,) containing peak snrs
+    '''
+
+    peak_times = []
+    snrs = []
+    Txs = []
+    Txnum = []
+    Rxnum = []
+    rxcount = 0
+    for k in range(len(peaks['peak_locs'])):
+        peak_times += peaks['peak_locs'][k]
+        snrs += peaks['peak_heights'][k]
+        Txs += [peaks['transmission'][k]]*len(peaks['peak_locs'][k])
+        Txnum += [k]*len(peaks['peak_locs'][k])
+        Rxnum += [rxcount]*len(peaks['peak_locs'][k])
+        if len(peaks['peak_locs'][k]) > 0:
+            rxcount += 1
+
+    peak_times = np.array(peak_times)
+    snrs = np.array(snrs)
+    Txs = pd.to_datetime(np.array(Txs))
+    Txnum = np.array(Txnum)
+
+    if timestamp == 'date':
+        peaks = {
+            'peak_times': peak_times,
+            'snrs': snrs,
+            'Txs': Txs,
+        }
+    elif timestamp == 'txnum':
+        peaks = {
+            'peak_times': peak_times,
+            'snrs': snrs,
+            'Txs': Txnum,
+        }
+    elif timestamp == 'rxnum':
+        peaks = {
+            'peak_times': peak_times,
+            'snrs': snrs,
+            'Txs': Rxnum,
+        }
+    else:
+        raise ValueError('timestamp must be one of date, txnum, or rxnum, not {}'.format(timestamp))
+
+    return peaks
 
 def get_peak_heights(da: xr.DataArray, noise_slice: slice, circular_avg: int, snr_threshold: float = 9) -> dict:
     '''

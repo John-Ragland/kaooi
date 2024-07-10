@@ -20,8 +20,8 @@ if __name__ == '__main__':
         for year in [2023, 2024]:
 
             # most recent update of dataset
-            last_update = pd.Timestamp('2024-01-18 T20:00:00')
-
+            last_update = pd.Timestamp('today')
+            
             Tx_times = kaooi.get_Tx_keytimes(year=year)
 
             for Tx_time in Tx_times:
@@ -37,6 +37,7 @@ if __name__ == '__main__':
                     print(f'\t{Tx_time}')
                     # create empty dataset
                     hdata = {node: None}
-                    ds_blank = kaooi.construct_xds(Tx_time, hdata, length='2H', sampling_rate=500)
+                    print(node, Tx_time)
+                    ds_blank = kaooi.construct_xds(Tx_time, hdata, length='2h', sampling_rate=500)
                     # save to disk
                     ds_blank.to_netcdf(fn)

@@ -28,3 +28,11 @@ dev_notebooks/.ipynb_checkpoints/
 
 # Docs
 docs/_build/
+
+# Simulation Files
+*.bty
+*.shd
+*.mod
+*.ray
+*.env
+*.prt
