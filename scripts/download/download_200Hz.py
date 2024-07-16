@@ -20,7 +20,7 @@ if __name__ == '__main__':
         # create partial function
         download_Tx_partial = functools.partial(
             kaooi.downloadTx_200hz,
-            ds_dir='/datadrive/kauai/transmissions/ooi_lf/',
+            ds_dir='/Volumes/ODLstorage1/John/azure_migrate/datadrive2/kauai/transmissions/ooi_lf/',
             length='2h',
             verbose=True,
         )

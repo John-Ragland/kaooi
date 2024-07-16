@@ -30,7 +30,8 @@ dependencies = [
     "ooipy",
     "tqdm",
     "ujson",
-    "kerchunk"
+    "kerchunk",
+    "xrsignal"
 ]
 
 [project.urls]
