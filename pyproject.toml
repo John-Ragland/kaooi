@@ -31,7 +31,8 @@ dependencies = [
     "tqdm",
     "ujson",
     "kerchunk",
-    "xrsignal"
+    "xrsignal",
+    "h5py"
 ]
 
 [project.urls]
@@ -42,8 +43,11 @@ Source = "https://github.com/unknown/kaooi"
 version-file = "_version.py"
 
 [tool.hatch.version]
-source="vcs"
+source = "vcs"
 vcs="git"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
 
 [tool.hatch.envs.default]
 dependencies = [

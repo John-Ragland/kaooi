@@ -9,6 +9,9 @@
 # figures
 dev_notebooks/figures/
 
+# Wheels
+dist/
+
 # Compiled Python files
 *.pyc
 __pycache__/

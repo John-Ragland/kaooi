@@ -108,10 +108,10 @@ def downloadTx_200hz(
 
 def downloadTx_64kHz(
     Tx_time: pd.Timestamp,
+    save: bool = True,
     ds_dir: str = '/datadrive/kauai/transmissions/64kHz_sensors/',
     length: str = '2h',
     verbose: bool = False,
-    preprocess: bool = False,
     nodes: Optional[list] = None,
 ) -> None:
     '''
@@ -121,63 +121,86 @@ def downloadTx_64kHz(
     ----------
     Tx_time : pd.Timestamp
         start time of transimission
+    save : bool
+        if True, the output is saved to disk in location `ds_dir`. Default is True. If False,
+        the xarray.Dataset is returned and ds_dir is ignored.
     ds_dir : str
         directory to save data to. data org inside of directory should have real and imag folders
     length : str
         length of data to download, should be readable by pd.Timedelta
     verbose : bool
         if True, print progress
-    preprocess : bool
-        if true, then data is match filtered and clipped. Default is False
     nodes : list
         list of nodes to download data from. Default (None) is all nodes
     '''
 
     # check if data already exists
-    fn = f'{ds_dir}/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
+    if save:
+        fn = f'{ds_dir}/{Tx_time.strftime("%Y%m%dT%H%M%S")}.nc'
 
-    if os.path.exists(fn):
-        if verbose:
-            print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
-        return
+        if os.path.exists(fn):
+            if verbose:
+                print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
+            return
 
     # download data from ooi server
     data = kaooi.download_data_bb(Tx_time, length=length, verbose=verbose, nodes=nodes)
 
+    data_filled = kaooi.fill_partial_data(data, Tx_time, length)
+
     # zero mean / fill gaps if present
-    data_nogaps = zm_rem_gaps(data)
+    data_nogaps = zm_rem_gaps(data_filled)
 
     # decimate data to fs = 500 Hz
     data_dec = kaooi.decimate_data(data_nogaps)
+
     # convert to x array.dataset
     data_x = kaooi.construct_xds(Tx_time, data_dec, length=length, sampling_rate=500, chunk_sizes={'time': 3600001})
+
     # skip if there is uneven data coverage
     if data_x is None:
         if verbose:
             print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
         return
 
-    if preprocess:
-        if verbose:
-            print('processing data...')
-        # remove mean from data
-        data_x_nm = data_x - data_x.mean()
-
-        # match filter the data
-        data_x_match = kaooi.match_filter(data_x_nm, dim='time', sampling_rate=500, length=length)
-
-        if verbose:
-            print('saving data...')
-        # save to disk
-        # duct taping that netcdf doesn't allow complex numbers
-        data_x_match.to_netcdf(fn)
-    else:
+    if save:
         data_x.to_netcdf(fn)
 
-    if verbose:
-        print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} completed.')
-    return
+        if verbose:
+            print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} completed.')
+        return
+    else:
+        return data_x
 
+def fill_partial_data(hdata: dict, Tx_time : pd.Timestamp, length: str) -> dict:
+    '''
+    fill_partial_data - take dictionary of hydrophone data and use
+    obspy.trim to make it be exactly (length) long
+
+    Parameters
+    ----------
+    hdata : dict
+        dictionary of hydrophone data
+    Tx_time : pd.Timestamp
+        start time of transmission
+    length : str
+        length of data to download, should be readable by pd.Timedelta
+    
+    Returns
+    -------
+    hdata_filled : dict
+        dictionary of hydrophone data with data filled to be exactly (length) long
+    '''
+
+    hdata_filled = {}
+    for node in hdata:
+        hdata_filled[node] = hdata[node].trim(
+            obspy.UTCDateTime(Tx_time),
+            obspy.UTCDateTime(Tx_time + pd.Timedelta(length)),
+            pad = True,
+        )
+
+    return hdata_filled
 
 def download_data_bb(
     key_time: pd.Timestamp, length: Optional[str] = '2h', verbose: Optional[bool] = True, nodes: Optional[list] = None
@@ -211,11 +234,13 @@ def download_data_bb(
     for node in tqdm(nodes, disable=~verbose):
         if verbose:
             print(f'{node}:')
+        print('gapless merge update used')
         hdata[node] = ooipy.get_acoustic_data(
             start_time,
             end_time,
             node,
             verbose=verbose,
+            gapless_merge=True,
         )
 
     return hdata
@@ -398,7 +423,7 @@ def construct_xds(
             )
             if verbose:
                 print('missing data for', node)
-        # Add data if it is the correct length
+
         elif len(hdata[node].data) == pd.Timedelta(length).seconds * sampling_rate + 1:
             single_channel = np.expand_dims(hdata[node].data, 1)
 
@@ -461,12 +486,15 @@ def zm_rem_gaps(hdata: dict):
         if hdata[node] == None:
             pass
         else:
-            # remove mean (whether or not data has gaps)
-            hdata[node].data = hdata[node].data - np.mean(hdata[node].data)
+            # remove mean (whether or not data has gaps or nan values)
+            hdata[node].data = hdata[node].data - np.nanmean(hdata[node].data)
+            # fill numpy masked array gaps
             if isinstance(hdata[node].data, np.ma.masked_array):
-                # fill gaps with zeros if present
                 hdata[node].data = hdata[node].data.filled(fill_value=0)
-            else:
-                pass
+            # fill nan values with zeros
+            hdata[node].data[np.isnan(hdata[node].data)] = 0
+            # fill invalid values with zeros. WARNING I'm not completely sure what 
+            # causes the values to be invalid
+            hdata[node].data[hdata[node].data > 8e19] = 0
     print('gaps removed')
     return hdata
