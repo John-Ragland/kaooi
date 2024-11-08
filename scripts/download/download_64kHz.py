@@ -24,7 +24,7 @@ if __name__ == '__main__':
                     continue
                 kaooi.downloadTx_64kHz(
                     Tx_time,
-                    ds_dir=f'/Volumes/ODLstorage1/John/azure_migrate/datadrive2/kauai/transmissions/ooi_bb_tc/{node}',
+                    ds_dir=f'/gscratch/coenv/jhrag/data/kauai/transmissions/ooi_bb_tc/{node}',
                     length='2h',
                     verbose=True,
                     preprocess=False,

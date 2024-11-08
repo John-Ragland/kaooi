@@ -46,7 +46,7 @@ for node in obs_nodes:
 def downloadTx_200hz(
     Tx_time: pd.Timestamp,
     ds_dir: str = '/datadrive/kauai/transmissions/200Hz_sensors_clipped/',
-    length: str = '2H',
+    length: str = '2h',
     verbose=False,
     preprocess=False,
 ) -> None:
@@ -79,15 +79,13 @@ def downloadTx_200hz(
     data = kaooi.download_data_lf(Tx_time, length=length, verbose=verbose)
 
     # convert to x array.dataset
-    data_x = kaooi.construct_xds(Tx_time, data, length=length, sampling_rate=200, chunk_sizes={'time': 1440001})
+    data_x = kaooi.construct_xds(Tx_time, data, length=length, sampling_rate=200, chunk_sizes={'time': 1440001}, dtype='float32')
 
-    # skip if there is uneven data coverage
+    # skip no data
     if data_x is None:
         if verbose:
             print(f'{Tx_time.strftime("%Y%m%dT%H%M%S")} skipped')
         return
-
-    # data_x = kaooi.tools.add_ltst_coords(data_x, dim='time', sampling_rate=200, length=length)
 
     if preprocess:
         # clip data
@@ -111,7 +109,7 @@ def downloadTx_200hz(
 def downloadTx_64kHz(
     Tx_time: pd.Timestamp,
     ds_dir: str = '/datadrive/kauai/transmissions/64kHz_sensors/',
-    length: str = '2H',
+    length: str = '2h',
     verbose: bool = False,
     preprocess: bool = False,
     nodes: Optional[list] = None,
@@ -182,7 +180,7 @@ def downloadTx_64kHz(
 
 
 def download_data_bb(
-    key_time: pd.Timestamp, length: Optional[str] = '2H', verbose: Optional[bool] = True, nodes: Optional[list] = None
+    key_time: pd.Timestamp, length: Optional[str] = '2h', verbose: Optional[bool] = True, nodes: Optional[list] = None
 ) -> dict:
     '''
     download_data - given start time return xr.Dataset of hydrophone for every BB hydrophone
@@ -223,7 +221,7 @@ def download_data_bb(
     return hdata
 
 
-def download_data_lf(key_time: pd.Timestamp, length: Optional[str] = '2H', verbose: Optional[bool] = True) -> dict:
+def download_data_lf(key_time: pd.Timestamp, length: Optional[str] = '2h', verbose: Optional[bool] = True) -> dict:
     '''
     download_data - given start time return xr.Dataset of hydrophone for every LF hydrophone
     two hours of data will be downloaded
@@ -260,7 +258,7 @@ def download_data_lf(key_time: pd.Timestamp, length: Optional[str] = '2H', verbo
 
 def get_ooi_data(
     key_time: pd.Timestamp,
-    length: Optional[str] = '2H',
+    length: Optional[str] = '2h',
     verbose: Optional[bool] = True,
     chunk_sizes: Optional[dict] = {'time': 125e3, 'transmission': 1},
 ) -> xr.Dataset:
@@ -357,7 +355,8 @@ def construct_xds(
     length: str,
     sampling_rate: float,
     chunk_sizes: Optional[dict] = None,
-    dtype : Optional[str] = 'float64'
+    dtype : Optional[str] = 'float64',
+    verbose: Optional[bool] = False,
 ) -> xr.Dataset:
     '''
     construct_xds - construct xarray dataset of hydrophone data for single transmission
@@ -376,6 +375,8 @@ def construct_xds(
         dictionary of chunk sizes for each dimension of the dataset
     dtype : str
         data type to use if hdata is none
+    verbose : bool
+        if True, show printed messages
 
     Returns
     -------
@@ -387,6 +388,7 @@ def construct_xds(
 
     hdata_x = {}
     for node in hdata:
+        # Add nans if specific channel is missing
         if hdata[node] == None:
             nsamples = int(pd.Timedelta(length).value / 1e9 * sampling_rate + 1)
             single_channel = np.expand_dims(np.ones(nsamples) * np.nan, 1).astype(dtype)
@@ -394,7 +396,10 @@ def construct_xds(
             hdata_x[node] = xr.DataArray(
                 single_channel, dims=['time', 'transmission'], coords={'transmission': [key_time]}, name=node
             )
-        else:
+            if verbose:
+                print('missing data for', node)
+        # Add data if it is the correct length
+        elif len(hdata[node].data) == pd.Timedelta(length).seconds * sampling_rate + 1:
             single_channel = np.expand_dims(hdata[node].data, 1)
 
             hdata_x[node] = xr.DataArray(
@@ -413,7 +418,16 @@ def construct_xds(
                 hdata_x[node].attrs['processing'] = str(hdata_x[node].attrs['processing'])
             except KeyError:
                 pass
+        # add full blank file if data is partially present TODO add the partial data with correct NANs or zeros
+        else:
+            nsamples = int(pd.Timedelta(length).value / 1e9 * sampling_rate + 1)
+            single_channel = np.expand_dims(np.ones(nsamples) * np.nan, 1).astype(dtype)
 
+            hdata_x[node] = xr.DataArray(
+                single_channel, dims=['time', 'transmission'], coords={'transmission': [key_time]}, name=node
+            )
+            if verbose:
+                print(f'partial data for {node}, {len(hdata[node].data)} samples, transmission filled with nans')
     
     try:
         ds = xr.Dataset(hdata_x, coords={'time': time_coord})

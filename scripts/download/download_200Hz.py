@@ -20,12 +20,14 @@ if __name__ == '__main__':
         # create partial function
         download_Tx_partial = functools.partial(
             kaooi.downloadTx_200hz,
-            ds_dir='/Volumes/ODLstorage1/John/azure_migrate/datadrive2/kauai/transmissions/ooi_lf/',
+            ds_dir='/gscratch/coenv/jhrag/data/kauai/transmissions/ooi_lf/',
             length='2h',
             verbose=True,
         )
 
         # Create a pool of processes, one for each CPU
+        #with mp.Pool(processes=32) as pool:
+        #    list(tqdm(pool.imap_unordered(download_Tx_partial, Tx_times, chunksize=1), total=len(Tx_times)))
 
-        with mp.Pool(processes=num_cpus) as pool:
-            list(tqdm(pool.imap_unordered(download_Tx_partial, Tx_times, chunksize=1), total=len(Tx_times)))
+        for Tx_time in tqdm(Tx_times):
+            download_Tx_partial(Tx_time)

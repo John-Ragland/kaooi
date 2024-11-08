@@ -16,11 +16,11 @@ if __name__ == '__main__':
     nodes = ['LJ01C', 'PC01A', 'PC03A', 'LJ01A', 'LJ01D']
     for node in nodes:
         print(f'filling in blank files for {node}...')
-        ds_dir = f'/datadrive/kauai/transmissions/ooi_bb_tc/{node}'
+        ds_dir = f'/gscratch/coenv/jhrag/data/kauai/transmissions/ooi_bb_tc/{node}'
         for year in [2023, 2024]:
 
             # most recent update of dataset
-            last_update = pd.Timestamp('today')
+            last_update = pd.Timestamp('2024-07-16 T12:00:00')
             
             Tx_times = kaooi.get_Tx_keytimes(year=year)
 

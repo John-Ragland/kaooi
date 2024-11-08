@@ -9,6 +9,7 @@ import ujson
 from kerchunk.hdf import SingleHdf5ToZarr
 from kerchunk.combine import MultiZarrToZarr
 import numpy as np
+from concurrent.futures import ProcessPoolExecutor
 
 def open_ooi_bb(
     dataset_dir: str = '/datadrive/kauai/transmissions/ooi_bb_tc/',
@@ -51,15 +52,13 @@ def open_ooi_bb(
 
         flist = []
         for node in nodes:
-            flist += fs.glob(f'/datadrive/kauai/transmissions/ooi_bb_tc/{node}/*.nc')
+            flist += fs.glob(f'{dataset_dir}{node}/*.nc')
 
         mappings = []
-        for f in tqdm(flist):
-            h5chunks = SingleHdf5ToZarr(f)
-            try:
-                mappings.append(h5chunks.translate())
-            except:
-                raise Exception (f'error computing mapping for {f}')
+
+        with ProcessPoolExecutor() as executor:
+            mappings = list(tqdm(executor.map(__process_file, flist), total=len(flist)))
+
         mzz = MultiZarrToZarr(mappings, concat_dims=['transmission'], identical_dims=['time']).translate()
 
         with open(mapping_dir, 'wb') as f:
@@ -118,31 +117,38 @@ def open_ooi_lf(
         flist = fs.glob(f'{dataset_dir}*.nc')
 
         mappings = []
-        for f in tqdm(flist):
-            h5chunks = SingleHdf5ToZarr(f)
-            try:
-                mappings.append(h5chunks.translate())
-            except:
-                raise Exception(f'error computing mapping for {f}')
+        with ProcessPoolExecutor() as executor:
+            mappings = list(tqdm(executor.map(__process_file, flist), total=len(flist)))
         mzz = MultiZarrToZarr(mappings, concat_dims=['transmission'], identical_dims=['time']).translate()
-
+        
         with open(mapping_dir, 'wb') as f:
             f.write(ujson.dumps(mzz).encode())
     else:
         if verbose:
             print(f'mapping already exists and not computed')
 
-    # open dataset
+    # read json file
+    with open(mapping_dir, 'rb') as f:
+        mzz_read = ujson.load(f)
 
-    so = {'fo': mapping_dir}
+    # open dataset
+    so = {'fo': mzz_read}
 
     ds = xr.open_dataset(
         "reference://", engine="zarr", backend_kwargs={"consolidated": False, "storage_options": so}
     ).chunk({'transmission': 1})
 
     # dumb way to fix issues
-    problem_idx = [42, 63, 102, 104, 124, 131, 133, 134, 135, 136, 137, 138, 139, 152, 257] + list(np.arange(302, 332))
-    good_idx = list(set(np.arange(ds.sizes['transmission'])) - set(problem_idx))
+    #problem_idx = [42, 63, 102, 104, 124, 131, 133, 134, 135, 136, 137, 138, 139, 152, 257] + list(np.arange(302, 332))
+    #good_idx = list(set(np.arange(ds.sizes['transmission'])) - set(problem_idx))
 
-    ds_good = ds.isel({'transmission': good_idx})
+    #ds_good = ds.isel({'transmission': good_idx})
     return ds
+
+
+def __process_file(f):
+    h5chunks = SingleHdf5ToZarr(f)
+    try:
+        return h5chunks.translate()
+    except Exception as e:
+        raise Exception(f'error computing mapping for {f}') from e

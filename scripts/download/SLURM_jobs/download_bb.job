@@ -1,0 +1,20 @@
+#!/bin/bash
+
+#SBATCH --job-name=bb_download
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=jhrag@uw.edu
+
+#SBATCH --account=coenv
+#SBATCH --cpus-per-task=32 #number of CPUs
+#SBATCH --mem=100GB #RAM
+#SBATCH --partition=cpu-g2 #change if you have access to other resources
+#SBATCH --time=48:00:00 #time limit 8 hours
+
+#SBATCH --export=all
+#SBATCH --output=slurm_print_bb.out # where STDOUT goes
+#SBATCH --error=slurm_error_bb.out # where STDERR goes
+
+# Your programs to run.
+eval "$(conda shell.bash hook)"
+conda activate kb
+python ../download_64kHz.py

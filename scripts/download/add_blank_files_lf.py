@@ -15,12 +15,12 @@ import pandas as pd
 if __name__ == '__main__':
 
 
-    ds_dir = f'/datadrive/kauai/transmissions/ooi_lf'
+    ds_dir = f'/gscratch/coenv/jhrag/data/kauai/transmissions/ooi_lf'
     for year in [2023, 2024]:
 
         # most recent update of dataset
         # last_update = pd.Timestamp('today')
-        last_update = pd.Timestamp('2024-02-11')
+        last_update = pd.Timestamp('2024-07-16')
         Tx_times = kaooi.get_Tx_keytimes()
 
         for Tx_time in Tx_times:

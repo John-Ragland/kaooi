@@ -8,7 +8,7 @@ from scipy import signal
 from tqdm import tqdm
 import pandas as pd
 
-def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold =10, flatten=False, timestamp='date'):
+def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold = 10, flatten=False, timestamp='date'):
     '''
     estimate_peaks - given processed data, estimate location and snr of peaks
 
@@ -58,7 +58,52 @@ def estimate_peaks_array(da, noise_slice=(0, None), snr_threshold =10, flatten=F
     
     return arrival_times
 
-def flatten_peaks(peaks : dict, timestamp='date'):
+
+def estimate_peaks_amplitude(da, flatten=False, timestamp='date'):
+    '''
+    estimate_peaks_amplitude - given processed data, estimate location and amplitude of peaks
+        peak threshold is set to 0 so that it can be filtered later
+    Parameters
+    ----------
+    da : xr.DataArray
+        dataset of processed, stacked, complex envelope of data. Should have dimensions ['shorttime', 'transmission']
+    flatten : bool
+        if true, peak_locs and peak_heights are flatttened, and transmission is repeated for each peak
+    timestamp : str
+        ['date','txnum','rxnum'] date returns pd.Timestamp, txnum returns transmission number, rxnum returns reception number
+
+    Returns
+    -------
+    arrival_times : dict
+        dictionary with keys ['peak_locs', 'peak_heights', 'transmission']
+        containing a list of arrival times for each transmission
+    '''
+
+    peak_locs = []
+    peak_heights = []
+
+    for k in range(da.sizes['transmission']):
+        loc, height = signal.find_peaks(da.isel({'transmission': k}), height=0)
+        peak_locs.append(list(loc))
+        peak_heights.append(list(height['peak_heights']))
+
+    peak_locs_s = []
+    for k in range(len(peak_locs)):
+        peak_locs_s.append(da.shorttime.values[peak_locs[k]].tolist())
+
+    arrival_times =  {
+        'peak_locs': peak_locs_s,
+        'peak_heights': peak_heights,
+        'transmission': da.transmission.values.tolist(),
+    }
+
+    if flatten:
+        arrival_times = flatten_peaks(arrival_times, timestamp, amplitude_type='amplitude')
+    
+    return arrival_times
+
+
+def flatten_peaks(peaks : dict, timestamp='date', amplitude_type : str = 'snr'):
     '''
     flatten_peaks - given output of ::kaooi.estimate_peaks_array::, compute vectors
         of transmission date, arrival time, and snr (in db) that can be used to created
@@ -71,7 +116,8 @@ def flatten_peaks(peaks : dict, timestamp='date'):
         should have keys, ['peak_locs', 'peak_heights', 'transmission']
     timestamp : str
         ['date','txnum','rxnum'] date returns pd.Timestamp, txnum returns transmission number, rxnum returns reception number
-
+    amplitude_type : str
+        ['snr','amplitude'] snr returns snr in dB, amplitude returns amplitude
 
     Returns
     -------
@@ -82,7 +128,6 @@ def flatten_peaks(peaks : dict, timestamp='date'):
     snrs : np.array
         vector of shape (n,) containing peak snrs
     '''
-
     peak_times = []
     snrs = []
     Txs = []
@@ -106,19 +151,19 @@ def flatten_peaks(peaks : dict, timestamp='date'):
     if timestamp == 'date':
         peaks = {
             'peak_times': peak_times,
-            'snrs': snrs,
+            f'{amplitude_type}s': snrs,
             'Txs': Txs,
         }
     elif timestamp == 'txnum':
         peaks = {
             'peak_times': peak_times,
-            'snrs': snrs,
+            f'{amplitude_type}s': snrs,
             'Txs': Txnum,
         }
     elif timestamp == 'rxnum':
         peaks = {
             'peak_times': peak_times,
-            'snrs': snrs,
+            f'{amplitude_type}s': snrs,
             'Txs': Rxnum,
         }
     else:
